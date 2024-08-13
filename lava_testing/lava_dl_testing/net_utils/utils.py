@@ -32,16 +32,27 @@ class TrafficDataset(Dataset):
         self.n_tsteps = n_tsteps
         self.gain = gain
         self.bias = bias
-        self.images = [self.load_image(img) for img in image_paths]
-        self.labels = [self.parse_label(path) for path in vehicle_label_paths]
+        self.images = []
+        self.labels = []
 
-        if not all(img.shape == self.images[0].shape for img in self.images):
-            raise ValueError("All images must have the same shape.")
+        for img_path, label_path in zip(image_paths, vehicle_label_paths):
+            try:
+                img = self.load_image(img_path)
+                labels = self.parse_label(label_path)
 
-        for label_list in self.labels:
-            for label in label_list:
-                if "bbox" not in label or len(label["bbox"]) != 4:
-                    raise ValueError(f"Invalid bbox format in label: {label}")
+                if not all(img.shape == self.images[0].shape for img in self.images):
+                    print(f"Skipping image {img_path} as its shape does not match the expected shape.")
+                    continue
+
+                if not all("bbox" in label and len(label["bbox"]) == 4 for label_list in labels.values() for label in label_list):
+                    print(f"Skipping label {label_path} due to invalid bbox format.")
+                    continue
+
+                self.images.append(img)
+                self.labels.append(labels)
+
+            except Exception as e:
+                print(f"Error processing {img_path} or {label_path}: {e}")
 
     def load_image(self, image_path):
         img = Image.open(image_path).convert('L') 
@@ -50,30 +61,53 @@ class TrafficDataset(Dataset):
         return img_array
 
     def parse_label(self, label_path):
-        vehicle_dict = {}
+      vehicle_dict = {}
 
-        with open(label_path, 'r') as f:
-            vehicle_labels = []
-            for index, row in enumerate(f):
-                yolov5_vals = row.strip().split(' ')
-                
-                category_id = int(yolov5_vals[0])
-                center_x, center_y, width, height = float(yolov5_vals[1]), float(yolov5_vals[2]), float(yolov5_vals[3]), float(yolov5_vals[4])
-                x_min, x_max = center_x - width / 2, center_x + width / 2
-                y_min, y_max = center_y - height / 2, center_y + height / 2
-                
-                vehicle_labels.append({
-                    "category_id": category_id,
-                    "bbox": [x_min, y_min, x_max, y_max]
-                })
-            
-            file_key = label_path.split('/')[-1] 
-            vehicle_dict[file_key] = vehicle_labels
-        
-        return vehicle_dict
+      with open(label_path, 'r') as f:
+          vehicle_labels = []
+          for index, row in enumerate(f):
+              yolov5_vals = row.strip().split(' ')
+              print(f"Parsed values: {yolov5_vals}")
+              
+              if len(yolov5_vals) != 5:
+                  raise ValueError(f"Incorrect number of values in label line: {row}")
 
-
+              category_id = int(yolov5_vals[0])
+              center_x, center_y, width, height = float(yolov5_vals[1]), float(yolov5_vals[2]), float(yolov5_vals[3]), float(yolov5_vals[4])
+              x_min, x_max = center_x - width / 2, center_x + width / 2
+              y_min, y_max = center_y - height / 2, center_y + height / 2
+              
+              vehicle_labels.append({
+                  "category_id": category_id,
+                  "bbox": [x_min, y_min, x_max, y_max]
+              })
+          
+          file_key = label_path.split('/')[-1]
+          vehicle_dict[file_key] = vehicle_labels
+      
+      return vehicle_dict
     
+    def __len__(self):
+        return len(self.labels)
+
+    def __getitem__(self, idx):
+      img = self.images[idx] / 255 
+      label = self.labels[idx]
+      v = np.zeros_like(img)
+      spikes = np.zeros((img.shape[0], self.n_tsteps), dtype=np.float32) 
+
+      for t in range(self.n_tsteps):
+          J = self.gain * img + self.bias 
+          v = v + J
+          mask = v > 1.0
+          
+          spikes[:, t] = np.sum(mask, axis=1)
+
+          v[mask] = 0 
+
+      return spikes, label 
+
+
 
 class ExpDataset(Dataset):
   def __init__(self, is_train, n_tsteps, gain=1, bias=0):

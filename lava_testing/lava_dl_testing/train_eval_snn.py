@@ -20,13 +20,6 @@ def get_all_files(path, keyword):
             paths.append(os.path.abspath(os.path.join(root, name)))
   return paths
 
-def collate_fn(batch):
-    spikes, labels = zip(*batch)
-    max_label_length = max(len(label) for label in labels)
-    padded_labels = torch.tensor([label + [0] * (max_label_length - len(label)) for label in labels])
-    
-    return torch.stack(spikes), padded_labels
-
 class TrainEvalSNN():
   def __init__(self, device, epochs, n_tsteps):
     self.model = SlayerDenseSNN().to(device)
@@ -48,33 +41,30 @@ class TrainEvalSNN():
         classifier=slayer.classifier.Rate.predict)
 
     for epoch in range(1, self.epochs+1):
-      # Train Model.
+
       self.model.train()
       image_paths = get_all_files(r'/Users/irislitiu/Downloads/traffic_dataset_labeled/train/images', '.jpg')
       label_paths = get_all_files(r'/Users/irislitiu/Downloads/traffic_dataset_labeled/train/labels', '.txt')
       train_data = TrafficDataset(image_paths=image_paths, vehicle_label_paths=label_paths, n_tsteps=self.n_ts)
-      train_loader = DataLoader(train_data, batch_size=32, collate_fn=collate_fn)
+      train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
       for inp, lbl in train_loader:
         inp, lbl = inp.to(self.device), lbl.to(self.device)
         output = assistant.train(inp, lbl)
 
-      # Evaluate Model.
       self.model.eval()
       image_paths = get_all_files(r'/Users/irislitiu/Downloads/traffic_dataset_labeled/test/images', '.jpg')
       label_paths = get_all_files(r'/Users/irislitiu/Downloads/traffic_dataset_labeled/test/labels', '.txt')
       test_data = TrafficDataset(image_paths=image_paths, vehicle_label_paths=label_paths, n_tsteps=self.n_ts)
-      test_loader = DataLoader(train_data, batch_size=32, collate_fn=collate_fn)
+      test_loader = DataLoader(train_data, batch_size=32, shuffle=True)
       for inp, lbl in test_loader:
         inp, lbl = inp.to(self.device), lbl.to(self.device)
         output = assistant.test(inp, lbl)
 
-      # Print the Stats, Save the best test-accuracy model, and Update `stats`.
       print("Epoch: {0}, Stats: {1}".format(epoch, stats))
       if stats.testing.best_accuracy:
         torch.save(self.model.state_dict(), "./trained_traffic_network.pt")
       stats.update()
 
-    # Now load the saved dict and export the hdf5 files.
     self.model.load_state_dict(torch.load("./trained_traffic_network.pt"))
     self.model.export_hdf5("./trained_traffic_network.net")
   
