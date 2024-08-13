@@ -1,5 +1,7 @@
+from enum import Enum
 import numpy as np
 from typing import Tuple
+from PIL import Image
 from torch.utils.data import Dataset
 
 from lava.magma.core.decorator import implements, requires
@@ -18,10 +20,65 @@ from lava.utils.system import Loihi2
 if Loihi2.is_loihi2_available:
   from lava.proc import embedded_io as eio
 
+class DatasetSplit(Enum):
+  TRAIN = 0,
+  TEST = 1,
+  VALIDATE = 2
+class TrafficDataset(Dataset):
+    #labels are in YOLObv5 format [category_id, bbox_center_y, bbox_center_x, bbox_width, bbox_height] - normalized by image dimensions
+    def __init__(self, image_paths, vehicle_label_paths, n_tsteps, gain=1, bias=0):
+        self.image_paths = image_paths
+        self.vehicle_label_paths = vehicle_label_paths
+        self.n_tsteps = n_tsteps
+        self.gain = gain
+        self.bias = bias
+        self.images = [self.load_image(img) for img in image_paths]
+        self.labels = [self.parse_label(path) for path in vehicle_label_paths]
+
+        if not all(img.shape == self.images[0].shape for img in self.images):
+            raise ValueError("All images must have the same shape.")
+
+        for label_list in self.labels:
+            for label in label_list:
+                if "bbox" not in label or len(label["bbox"]) != 4:
+                    raise ValueError(f"Invalid bbox format in label: {label}")
+
+    def load_image(self, image_path):
+        img = Image.open(image_path).convert('L') 
+        img = img.resize((28, 28), Image.Resampling.LANCZOS)
+        img_array = np.array(img)
+        return img_array
+
+    def parse_label(self, label_path):
+        vehicle_dict = {}
+
+        with open(label_path, 'r') as f:
+            vehicle_labels = []
+            for index, row in enumerate(f):
+                yolov5_vals = row.strip().split(' ')
+                
+                category_id = int(yolov5_vals[0])
+                center_x, center_y, width, height = float(yolov5_vals[1]), float(yolov5_vals[2]), float(yolov5_vals[3]), float(yolov5_vals[4])
+                x_min, x_max = center_x - width / 2, center_x + width / 2
+                y_min, y_max = center_y - height / 2, center_y + height / 2
+                
+                vehicle_labels.append({
+                    "category_id": category_id,
+                    "bbox": [x_min, y_min, x_max, y_max]
+                })
+            
+            file_key = label_path.split('/')[-1] 
+            vehicle_dict[file_key] = vehicle_labels
+        
+        return vehicle_dict
+
+
+    
+
 class ExpDataset(Dataset):
   def __init__(self, is_train, n_tsteps, gain=1, bias=0):
     super(ExpDataset, self).__init__()
-    mnist_dset = MnistDataset() # Already has train/test flattend images.
+    mnist_dset = MnistDataset() # Already has train/test flattened images.
     self.n_ts = n_tsteps
     self.gain, self.bias = gain, bias # Gain and Bias for encoding.
     if is_train:
@@ -57,18 +114,20 @@ class InpImgToSpk(AbstractProcess):
   """
   Input process to convert flattened images to binary spikes.
   """
-  def __init__(self, img_shape, n_tsteps, curr_img_id, v_thr=1):
+  def __init__(self, img_shape, n_tsteps, curr_img_id, v_thr=1, image_paths=None, vehicle_label_paths=None, split=DatasetSplit.TRAIN):
     super().__init__()
-    self.spk_out = OutPort(shape=(img_shape, ))
+    flattened_img_shape = (np.prod(img_shape), )  # Flattened shape
+    self.spk_out = OutPort(shape=flattened_img_shape)
     self.label_out = OutPort(shape=(1, ))
 
     self.curr_img_id = Var(shape=(1, ), init=curr_img_id)
     self.n_ts = Var(shape=(1, ), init=n_tsteps)
-    self.inp_img = Var(shape=(img_shape, ))
+    self.inp_img = Var(shape=flattened_img_shape)
     self.ground_truth_label = Var(shape=(1, ))
-    self.v = Var(shape=(img_shape, ), init=0)
+    self.v = Var(shape=flattened_img_shape, init=0)
     self.vth = Var(shape=(1, ), init=v_thr)
 
+    self.dataset = TrafficDataset(image_paths, vehicle_label_paths, split, n_tsteps)
 @implements(proc=InpImgToSpk, protocol=LoihiProtocol)
 @requires(CPU)
 class PyInpImgToSpkModel(PyLoihiProcessModel):
@@ -87,7 +146,7 @@ class PyInpImgToSpkModel(PyLoihiProcessModel):
 
   def __init__(self, proc_params):
     super().__init__(proc_params=proc_params)
-    self.mnist_dset = MnistDataset()
+    self.dataset = proc_params.get('dataset')
     self.gain = 1
     self.bias = 0
 
@@ -109,9 +168,9 @@ class PyInpImgToSpkModel(PyLoihiProcessModel):
     Post-management phase executed only when the above `post_guard()` returns
     True -> then, move to the next image, reset the neuron states, etc.
     """
-    img = self.mnist_dset.test_images[self.curr_img_id]
+    img, label = self.dataset[self.curr_img_id] #returned by __get_item__ of TrafficDataset
     self.inp_img = img/255
-    self.ground_truth_label = self.mnist_dset.test_labels[self.curr_img_id]
+    self.ground_truth_label = label
     self.label_out.send(np.array([self.ground_truth_label]))
     self.v = np.zeros(self.v.shape, dtype=float)
     self.curr_img_id += 1
@@ -139,7 +198,8 @@ class OutSpkToCls(AbstractProcess):
   """
   Output process to collect output neuron spikes and infer predicted class.
   """
-  def __init__(self, n_tsteps, num_test_imgs, n_cls_shape=(10, )):
+  # changed n_cls_shape for vehicle detection
+  def __init__(self, n_tsteps, num_test_imgs, n_cls_shape=(1, )):
     super().__init__()
     self.spikes_in = InPort(shape=n_cls_shape) # Receives output spikes.
     self.label_in = InPort(shape=(1, )) # Receives ground truth labels.

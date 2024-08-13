@@ -41,7 +41,7 @@ class SlayerDenseSNN(torch.nn.Module):
         neuron_params, 128, 64, weight_norm=False, delay=False),
       # Output Layer.
       slayer.block.cuba.Dense(
-        neuron_params, 64, 10, weight_norm=False, delay=False)
+        neuron_params, 64, 1, weight_norm=False, delay=False)
     ])
 
   def forward(self, spikes):

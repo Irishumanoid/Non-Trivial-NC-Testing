@@ -5,17 +5,35 @@ import torch
 import lava.lib.dl.slayer as slayer
 from torch.utils.data import DataLoader
 
-from net_utils.utils import ExpDataset
+from net_utils.utils import TrafficDataset
 from net_utils.snns import SlayerDenseSNN, LavaDenseSNN
 
 from PIL import Image
 import numpy as np
+
+
+def get_all_files(path, keyword):
+  paths = []
+  for root, dirs, files in os.walk(path):
+    for name in files:
+      if str(name).__contains__(keyword):
+            paths.append(os.path.abspath(os.path.join(root, name)))
+  return paths
+
+def collate_fn(batch):
+    spikes, labels = zip(*batch)
+    max_label_length = max(len(label) for label in labels)
+    padded_labels = torch.tensor([label + [0] * (max_label_length - len(label)) for label in labels])
+    
+    return torch.stack(spikes), padded_labels
+
 class TrainEvalSNN():
   def __init__(self, device, epochs, n_tsteps):
     self.model = SlayerDenseSNN().to(device)
     self.device = device
     self.epochs = epochs
     self.n_ts = n_tsteps
+
 
   def train_eval_snn(self):
     loss = slayer.loss.SpikeRate(
@@ -32,16 +50,20 @@ class TrainEvalSNN():
     for epoch in range(1, self.epochs+1):
       # Train Model.
       self.model.train()
-      train_data = ExpDataset(is_train=True, n_tsteps=self.n_ts)
-      train_loader = DataLoader(train_data, batch_size=100, num_workers=4)
+      image_paths = get_all_files(r'/Users/irislitiu/Downloads/traffic_dataset_labeled/test/images', '.jpg')
+      label_paths = get_all_files(r'/Users/irislitiu/Downloads/traffic_dataset_labeled/train/labels', '.txt')
+      train_data = TrafficDataset(image_paths=image_paths, vehicle_label_paths=label_paths, n_tsteps=self.n_ts)
+      train_loader = DataLoader(train_data, batch_size=32, collate_fn=collate_fn)
       for inp, lbl in train_loader:
         inp, lbl = inp.to(self.device), lbl.to(self.device)
         output = assistant.train(inp, lbl)
 
       # Evaluate Model.
       self.model.eval()
-      test_data = ExpDataset(is_train=False, n_tsteps=self.n_ts)
-      test_loader = DataLoader(test_data, batch_size=100, num_workers=4)
+      image_paths = get_all_files(r'./traffic_dataset_labeled/test/images', '.jpg')
+      label_paths = get_all_files(r'./traffic_dataset_labeled/test/labels', '.txt')
+      test_data = TrafficDataset(image_paths=image_paths, vehicle_label_paths=label_paths, n_tsteps=self.n_ts)
+      test_loader = DataLoader(train_data, batch_size=32, collate_fn=collate_fn)
       for inp, lbl in test_loader:
         inp, lbl = inp.to(self.device), lbl.to(self.device)
         output = assistant.test(inp, lbl)
@@ -49,12 +71,12 @@ class TrainEvalSNN():
       # Print the Stats, Save the best test-accuracy model, and Update `stats`.
       print("Epoch: {0}, Stats: {1}".format(epoch, stats))
       if stats.testing.best_accuracy:
-        torch.save(self.model.state_dict(), "./trained_mnist_network.pt")
+        torch.save(self.model.state_dict(), "./trained_traffic_network.pt")
       stats.update()
 
     # Now load the saved dict and export the hdf5 files.
-    self.model.load_state_dict(torch.load("./trained_mnist_network.pt"))
-    self.model.export_hdf5("./trained_mnist_network.net")
+    self.model.load_state_dict(torch.load("./trained_traffic_network.pt"))
+    self.model.export_hdf5("./trained_traffic_network.net")
   
   """
   Preprocess an image for inference based on hte number of time steps for spike generation, returning the spikes generated.
@@ -106,8 +128,8 @@ if __name__=="__main__":
     print(f"Making predictions for image: {args.image_path}")
     print("*" * 80)
 
-    if os.path.isfile('./trained_mnist_network.pt'):  
-      tes.model.load_state_dict(torch.load("./trained_mnist_network.pt"))
+    if os.path.isfile('./trained_traffic_network.pt'):  
+      tes.model.load_state_dict(torch.load("./trained_traffic_network.pt"))
     else:
       print("Trained model weights not found. Train the model before running any predictions.")
       sys.exit(1)
@@ -122,8 +144,9 @@ if __name__=="__main__":
           "Evaluating LavaDenseSNN on Loihi-2 Simulation Hardware on CPU.")
     print("*"*80)
     tes.train_eval_snn()
+    #TODO might need to adjust these
     lava_snn = LavaDenseSNN(
-        "./trained_mnist_network.net",
+        "./trained_traffic_network.net",
         img_shape=784,
         n_tsteps=args.n_tsteps,
         st_img_id=0, # Start evaluating from the 1st test image.
@@ -133,7 +156,7 @@ if __name__=="__main__":
 
   elif args.backend == "L2Sim" or args.backend == "L2Hw":
     try:
-      assert os.path.isfile("./trained_mnist_network.net")
+      assert os.path.isfile("./trained_traffic_network.net")
     except:
       print("*"*80)
       sys.exit(
@@ -149,7 +172,7 @@ if __name__=="__main__":
       print("Only evaluating the LavaDenseSNN on Loihi-2 Physical Hardware.")
       print("*"*80)
     lava_snn = LavaDenseSNN(
-        "./trained_mnist_network.net",
+        "./trained_traffic_network.net",
         img_shape=784,
         n_tsteps=args.n_tsteps,
         st_img_id=0, # Start evaluating from the 1st test image.
