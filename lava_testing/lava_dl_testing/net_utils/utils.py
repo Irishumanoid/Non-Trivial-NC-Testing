@@ -78,24 +78,23 @@ class TrafficDataset(Dataset):
 class ExpDataset(Dataset):
   def __init__(self, is_train, n_tsteps, gain=1, bias=0):
     super(ExpDataset, self).__init__()
-    mnist_dset = MnistDataset() # Already has train/test flattened images.
+    mnist_dset = MnistDataset() 
     self.n_ts = n_tsteps
-    self.gain, self.bias = gain, bias # Gain and Bias for encoding.
+    self.gain, self.bias = gain, bias 
     if is_train:
       self.images = mnist_dset.train_images
-      self.labels = np.int64(mnist_dset.train_labels) # Ensure lables are long.
+      self.labels = np.int64(mnist_dset.train_labels)
     else:
       self.images = mnist_dset.test_images
-      self.labels = np.int64(mnist_dset.test_labels) # Ensure labels are long.
+      self.labels = np.int64(mnist_dset.test_labels)
 
 
   def __len__(self):
     return len(self.labels)
 
-  def __getitem__(self, idx): # Returns the 784D binary spikes for one image.
-    img = self.images[idx]/255 # Normalize.
+  def __getitem__(self, idx): 
+    img = self.images[idx]/255 
     v = np.zeros_like(img.shape)
-    # Last dimension of `spikes` should be time-steps and dtype should be float.
     spikes = np.zeros((img.shape[0], self.n_ts), dtype=np.float32)
     for t in range(self.n_ts):
       J = self.gain*img + self.bias
