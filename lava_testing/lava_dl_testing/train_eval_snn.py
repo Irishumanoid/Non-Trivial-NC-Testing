@@ -50,7 +50,7 @@ class TrainEvalSNN():
     for epoch in range(1, self.epochs+1):
       # Train Model.
       self.model.train()
-      image_paths = get_all_files(r'/Users/irislitiu/Downloads/traffic_dataset_labeled/test/images', '.jpg')
+      image_paths = get_all_files(r'/Users/irislitiu/Downloads/traffic_dataset_labeled/train/images', '.jpg')
       label_paths = get_all_files(r'/Users/irislitiu/Downloads/traffic_dataset_labeled/train/labels', '.txt')
       train_data = TrafficDataset(image_paths=image_paths, vehicle_label_paths=label_paths, n_tsteps=self.n_ts)
       train_loader = DataLoader(train_data, batch_size=32, collate_fn=collate_fn)
@@ -60,8 +60,8 @@ class TrainEvalSNN():
 
       # Evaluate Model.
       self.model.eval()
-      image_paths = get_all_files(r'./traffic_dataset_labeled/test/images', '.jpg')
-      label_paths = get_all_files(r'./traffic_dataset_labeled/test/labels', '.txt')
+      image_paths = get_all_files(r'/Users/irislitiu/Downloads/traffic_dataset_labeled/test/images', '.jpg')
+      label_paths = get_all_files(r'/Users/irislitiu/Downloads/traffic_dataset_labeled/test/labels', '.txt')
       test_data = TrafficDataset(image_paths=image_paths, vehicle_label_paths=label_paths, n_tsteps=self.n_ts)
       test_loader = DataLoader(train_data, batch_size=32, collate_fn=collate_fn)
       for inp, lbl in test_loader:
