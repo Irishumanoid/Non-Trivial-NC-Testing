@@ -11,7 +11,6 @@ from net_utils.snns import SlayerDenseSNN, LavaDenseSNN
 from PIL import Image
 import numpy as np
 
-
 def get_all_files(path, keyword):
   paths = []
   for root, dirs, files in os.walk(path):
@@ -55,7 +54,7 @@ class TrainEvalSNN():
       image_paths = get_all_files(r'/Users/irislitiu/Downloads/traffic_dataset_labeled/test/images', '.jpg')
       label_paths = get_all_files(r'/Users/irislitiu/Downloads/traffic_dataset_labeled/test/labels', '.txt')
       test_data = TrafficDataset(image_paths=image_paths, vehicle_label_paths=label_paths, n_tsteps=self.n_ts)
-      test_loader = DataLoader(train_data, batch_size=32, shuffle=True)
+      test_loader = DataLoader(test_data, batch_size=32, shuffle=True)
       for inp, lbl in test_loader:
         inp, lbl = inp.to(self.device), lbl.to(self.device)
         output = assistant.test(inp, lbl)
