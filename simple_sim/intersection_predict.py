@@ -5,9 +5,7 @@ num_steps = 1000
 batch_size = 1
 num_inputs = 2  # traffic densities: (NS and EW)
 num_outputs = 2  # green light duration: (NS and EW)
-
 traffic_data = torch.rand(num_steps, batch_size, num_inputs)
-
 class SimpleNN(nn.Module):
     def __init__(self, num_inputs, num_outputs):
         super(SimpleNN, self).__init__()
@@ -29,27 +27,32 @@ class SimpleNN(nn.Module):
         x = self.relu(x)
         x = self.fc3(x)
         return x
-
-model = SimpleNN(num_inputs, num_outputs)
-loss_fn = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-
-
-'''training to minimize loss function by updating tensor parameters 
-(NC generalizes to real-time adjustments and models how NC devices will be able to update information)'''
-for step in range(num_steps):
-    optimizer.zero_grad()
-    input_tensor = traffic_data[step].view(batch_size, -1)  
-    output = model(input_tensor)
     
-    # target is the inverse of traffic density (more traffic -> longer green light)
-    target = 1 - traffic_data[step].view(batch_size, -1)
-    loss = loss_fn(output, target)
-    loss.backward()
-    optimizer.step()
+    '''training to minimize loss function by updating tensor parameters 
+    (NC generalizes to real-time adjustments and models how NC devices will be able to update information)'''
+    def train(self, optimizer, loss_fn, traffic_data):
+        for step in range(num_steps):
+            optimizer.zero_grad()
+            input_tensor = traffic_data[step].view(batch_size, -1)  
+            output = self(input_tensor) # call forward method
+            
+            # target is the inverse of traffic density (more traffic -> longer green light)
+            target = 1 - traffic_data[step].view(batch_size, -1)
+            loss = loss_fn(output, target)
+            loss.backward()
+            optimizer.step()
 
-    if step % 5 == 0:
-        print(f"Step {step}, Loss: {loss.item()}")
+            if step % 5 == 0:
+                print(f"Step {step}, Loss: {loss.item()}")
 
-print("Output data shape:", output.shape)
-print("Output data:", output.detach().numpy()) # output is relative green light durations for NS vs EW intersections
+        return output
+
+def test(): 
+    model = SimpleNN(num_inputs, num_outputs)
+    loss_fn = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    output = model.train(optimizer=optimizer, loss_fn=loss_fn, traffic_data=traffic_data)
+
+
+    print("Output data shape:", output.shape)
+    print("Output data:", output.detach().numpy()) # output is relative green light durations for NS vs EW intersections
