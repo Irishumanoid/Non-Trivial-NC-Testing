@@ -6,8 +6,6 @@ from itertools import product
 from random import sample
 
 #tensors represent time at NS to be green, then switches to SW (frac NS/total*1 minute, frac EW/total*1 minute)
-#simulation: grid with vert and hor lines at each intersection, timer in corner
-# TODO: integrate bool to determine whether cycle starts with NS or EW green light
 num_steps = 1000
 batch_size = 1
 num_inputs = 2  # traffic densities: (NS and EW)

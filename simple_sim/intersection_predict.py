@@ -6,6 +6,7 @@ batch_size = 1
 num_inputs = 2  # traffic densities: (NS and EW)
 num_outputs = 2  # green light duration: (NS and EW)
 traffic_data = torch.rand(num_steps, batch_size, num_inputs)
+targets = 1 - traffic_data.view(num_steps, batch_size, -1)  # Inverse of traffic density as target
 class SimpleNN(nn.Module):
     def __init__(self, num_inputs, num_outputs):
         super(SimpleNN, self).__init__()
@@ -56,3 +57,5 @@ def test():
 
     print("Output data shape:", output.shape)
     print("Output data:", output.detach().numpy()) # output is relative green light durations for NS vs EW intersections
+
+test()
