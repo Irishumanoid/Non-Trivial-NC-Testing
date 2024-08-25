@@ -1,12 +1,17 @@
 import torch
 import torch.nn as nn
+import matplotlib.pyplot as plt
+from zeus.monitor import ZeusMonitor
+monitor = ZeusMonitor(gpu_indices=[0])
+monitor.begin_window("training")
 
-num_steps = 1000
-batch_size = 1
+num_steps = 100000
+batch_size = 10
 num_inputs = 2  # traffic densities: (NS and EW)
 num_outputs = 2  # green light duration: (NS and EW)
 traffic_data = torch.rand(num_steps, batch_size, num_inputs)
 targets = 1 - traffic_data.view(num_steps, batch_size, -1)  # Inverse of traffic density as target
+
 class SimpleNN(nn.Module):
     def __init__(self, num_inputs, num_outputs):
         super(SimpleNN, self).__init__()
@@ -32,6 +37,8 @@ class SimpleNN(nn.Module):
     '''training to minimize loss function by updating tensor parameters 
     (NC generalizes to real-time adjustments and models how NC devices will be able to update information)'''
     def train(self, optimizer, loss_fn, traffic_data):
+        monitor.begin_window("epoch")
+        loss_values = []  # List to store loss values
         for step in range(num_steps):
             optimizer.zero_grad()
             input_tensor = traffic_data[step].view(batch_size, -1)  
@@ -43,19 +50,26 @@ class SimpleNN(nn.Module):
             loss.backward()
             optimizer.step()
 
+            loss_values.append(loss.item())  # Save the loss value
+
             if step % 5 == 0:
                 print(f"Step {step}, Loss: {loss.item()}")
-
-        return output
+        measurement = monitor.end_window("epoch")
+        return loss_values
 
 def test(): 
     model = SimpleNN(num_inputs, num_outputs)
     loss_fn = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    output = model.train(optimizer=optimizer, loss_fn=loss_fn, traffic_data=traffic_data)
-
-
-    print("Output data shape:", output.shape)
-    print("Output data:", output.detach().numpy()) # output is relative green light durations for NS vs EW intersections
+    loss_values = model.train(optimizer=optimizer, loss_fn=loss_fn, traffic_data=traffic_data)
+    measurement = monitor.end_window("training")
+    print(f"Energy: {measurement.total_energy} J", flush=True)
+    # Plotting the loss
+    plt.plot(loss_values)
+    plt.title('Training Loss over Time')
+    plt.xlabel('Training Steps')
+    plt.ylabel('Loss')
+    plt.yscale("log")
+    plt.show()
 
 test()

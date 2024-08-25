@@ -36,7 +36,6 @@ class RoadNetwork():
         for i in self.intersections:
             model = self.loc[i[0]][i[1]]
             optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-
             cur_traffic_data = torch.rand(num_steps, batch_size, num_inputs)
             out = model.train(optimizer, self.loss_fn, cur_traffic_data)
             self.weights[(i[0], i[1])] = out
