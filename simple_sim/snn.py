@@ -77,6 +77,8 @@ class TrafficNet(nn.Module):
         plt.title("Loss vs. Training Steps")
         plt.legend()
         plt.grid(True)
+        ax = plt.gca()
+        ax.set_ylim([10e-5, 1])
         plt.show()
 
 def test_traffic_net():

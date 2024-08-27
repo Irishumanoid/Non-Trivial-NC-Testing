@@ -70,6 +70,8 @@ def test():
     plt.xlabel('Training Steps')
     plt.ylabel('Loss')
     plt.yscale("log")
+    ax = plt.gca()
+    ax.set_ylim([10e-5, 1])
     plt.show()
 
 test()

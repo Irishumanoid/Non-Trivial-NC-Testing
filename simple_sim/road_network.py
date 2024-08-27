@@ -43,7 +43,7 @@ class RoadNetwork():
         return self.weights
     
     # run first interval with init weights, then change tensors weights based on the weights of tensors in the same row or column
-    def adjust_row_weights(self):
+    def adjust_weights(self):
         rows = set([tup[0] for tup in self.intersections])
         cols = set([tup[1] for tup in self.intersections])
 
@@ -91,7 +91,7 @@ class RoadNetwork():
         for i in range(len(splits)):
             self.assign_intersections()
             splits[i] = self.train()
-            self.adjust_row_weights()
+            self.adjust_weights()
 
         return splits
 
