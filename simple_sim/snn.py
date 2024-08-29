@@ -78,7 +78,7 @@ class TrafficNet(nn.Module):
         plt.legend()
         plt.grid(True)
         ax = plt.gca()
-        ax.set_ylim([10e-5, 1])
+        ax.set_ylim([10e-6, 1])
         plt.show()
 
 def test_traffic_net():
